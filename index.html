@@ -16,7 +16,11 @@
   #startBtn{padding:20px 70px;font-size:1.5em;font-weight:800;letter-spacing:3px;background:#0f0;color:#000;border:none;border-radius:12px;cursor:pointer;box-shadow:0 0 25px #0f0;transition:all .15s}
   #startBtn:active{transform:scale(.96)}
   #startBtn:disabled{opacity:.4;cursor:wait;box-shadow:none}
-  #hint{margin-top:20px;color:#666;font-size:.9em}
+  .subBtn{padding:12px 24px;font-size:.95em;font-weight:700;letter-spacing:1px;background:#11151b;color:#7fd0a0;border:1px solid #1e2732;border-radius:8px;cursor:pointer;transition:all .15s}
+  .subBtn:hover{border-color:#0f0;color:#0f0;box-shadow:0 0 10px rgba(0,255,0,.2)}
+  .subBtn:active{transform:scale(.96)}
+  #btnGroup{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap;justify-content:center}
+  #hint{margin-top:15px;color:#666;font-size:.9em}
   #logview{display:none;position:fixed;inset:0;z-index:2;flex-direction:column;background:#0a0c0f}
   body.log #logview,body.fail:not(.done) #logview{display:flex}
   #brand{padding:12px;text-align:center;background:#0e1116;border-bottom:1px solid #1e2732;color:#0f0;font-weight:800;letter-spacing:4px}
@@ -36,6 +40,10 @@
   <h1>afterglow</h1>
   <p class="sub">PS4 KERNEL EXPLOIT · FW 14.00 / 14.02</p>
   <button id="startBtn" disabled>CARREGANDO...</button>
+  <div id="btnGroup">
+    <button id="ghBtn" class="subBtn">▶ GoldHEN (Direct Loader)</button>
+    <button id="probeBtn" class="subBtn">🔍 Diagnóstico (Probe)</button>
+  </div>
   <p id="hint"></p>
 </div>
 <div id="logview">
