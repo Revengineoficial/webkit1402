@@ -1,42 +1,67 @@
 <!doctype html>
-<html lang="en" >
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>NanospeedGamer</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <canvas id="matrix"></canvas>
-
-    <div class="content">
-      <img class="logo" src="logo.png" alt="Logo" />
-      <h1>NanospeedGamer</h1>
-      <p class="subtitle">PS4 Kernel Exploit · 14.00 / 14.02</p>
-      <p class="count" id="count">starting automatically...</p>
-    </div>
-
-    <script src="matrix.js"></script>
-    <script src="launch.js"></script>
-  </body>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <title>NanospeedGamer — Diagnóstico</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="matrix" aria-hidden="true"></canvas>
+  <main class="content">
+    <img class="logo" src="logo.png" alt="NanospeedGamer" />
+    <h1>NanospeedGamer</h1>
+    <p class="subtitle">Verificação de inicialização</p>
+    <p class="count" id="count" role="status" aria-live="polite">Verificando arquivos do site...</p>
+    <ul id="checks" style="list-style:none;text-align:left;margin:12px 0 16px;font:13px monospace;line-height:1.8;color:#a0ffd0">
+      <li id="check-style">CSS: aguardando</li>
+      <li id="check-matrix">Animação: aguardando</li>
+      <li id="check-launch">Inicializador: verificando</li>
+    </ul>
+    <p style="font:12px/1.5 monospace;color:#b8c8c0">
+      Esta tela não inicia automaticamente a rotina de kernel. O arquivo launch.js referenciado pela versão anterior não existe neste pacote. A compatibilidade do firmware também precisa ser confirmada antes de qualquer execução.
+    </p>
+  </main>
   <script>
-  if (window.applicationCache) {
-    const app = window.applicationCache;
-    const count = document.getElementById("count");
-    app.addEventListener("downloading", () => {
-      if (count) count.textContent = "Guardando caché...";
-    });
-    app.addEventListener("progress", e => {
-      if (count && e.lengthComputable) {
-        count.textContent = "Guardando caché... " + Math.round(e.loaded / e.total * 100) + "%";
+    (function () {
+      var status = document.getElementById("count");
+      var launchCheck = document.getElementById("check-launch");
+      var styleCheck = document.getElementById("check-style");
+      var matrixCheck = document.getElementById("check-matrix");
+
+      function setLine(el, text) { if (el) el.textContent = text; }
+
+      var css = document.querySelector('link[rel="stylesheet"]');
+      if (css) {
+        css.addEventListener("load", function () { setLine(styleCheck, "CSS: carregado"); });
+        css.addEventListener("error", function () { setLine(styleCheck, "CSS: FALHA ao carregar"); });
       }
-    });
-    app.addEventListener("cached", () => {
-      if (count) count.textContent = "Caché listo. Iniciando...";
-    });
-    app.addEventListener("noupdate", () => {
-      if (count) count.textContent = "Caché listo. Iniciando...";
-    });
-  }
-</script>
+
+      var matrix = document.createElement("script");
+      matrix.src = "matrix.js";
+      matrix.onload = function () { setLine(matrixCheck, "Animação: script carregado"); };
+      matrix.onerror = function () { setLine(matrixCheck, "Animação: FALHA ao carregar matrix.js"); };
+      document.body.appendChild(matrix);
+
+      var probe = new XMLHttpRequest();
+      probe.open("GET", "launch.js", true);
+      probe.onreadystatechange = function () {
+        if (probe.readyState !== 4) return;
+        if (probe.status >= 200 && probe.status < 300) {
+          setLine(launchCheck, "Inicializador: arquivo encontrado (não executado)");
+          status.textContent = "Diagnóstico concluído; inicialização automática desativada.";
+        } else {
+          setLine(launchCheck, "Inicializador: launch.js ausente (HTTP " + probe.status + ")");
+          status.textContent = "Inicialização interrompida: falta o arquivo launch.js.";
+        }
+      };
+      probe.onerror = function () {
+        setLine(launchCheck, "Inicializador: não foi possível verificar launch.js");
+        status.textContent = "Falha de rede ao verificar os arquivos.";
+      };
+      probe.send(null);
+    }());
+  </script>
+</body>
 </html>
