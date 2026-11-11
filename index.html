@@ -4,74 +4,40 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>afterglow · PS4 14.00/14.02</title>
-<!--
-  ARQUIVOS NECESSÁRIOS NA MESMA PASTA:
-    index.html  jb-g.js  core.js  mem.js  afterglow-g.js  int64.js  ps4_offsets.js
-    patchset.bin  kpayload.bin  hen.bin (ou goldhen.bin)
-
-  COMO SERVIR (no PC, mesma rede do PS4):
-    ./serve.sh
-    ou:  python3 -m http.server 8000
-
-  NO PS4:
-    Abra  http://<IP-do-PC>:8000/   →  toque em INICIAR
-
-  SE TRAVAR:
-    Reinicie o console. NÃO recarregue a página.
--->
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%;overflow:hidden;background:#000;color:#ccc;font:15px/1.5 system-ui,sans-serif}
-  button{font-family:inherit}
-
   #matrix{position:fixed;inset:0;width:100%;height:100%;z-index:0;opacity:.35}
   body.log #matrix,body.done #matrix,body.fail #matrix{opacity:.08}
-
-  #landing{position:fixed;inset:0;z-index:1;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;text-align:center;padding:20px;color:#0f0}
+  #landing{position:fixed;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;color:#0f0}
   body.log #landing,body.done #landing,body.fail #landing{display:none}
   #landing h1{font-size:3em;letter-spacing:3px;text-shadow:0 0 20px #0f0,0 0 40px #0f0}
   #landing .sub{margin:10px 0 30px;color:#7fd0a0;font-size:.95em;letter-spacing:1px}
-  #startBtn{padding:20px 70px;font-size:1.5em;font-weight:800;letter-spacing:3px;
-    background:#0f0;color:#000;border:none;border-radius:12px;cursor:pointer;
-    box-shadow:0 0 25px #0f0;transition:all .15s}
+  #startBtn{padding:20px 70px;font-size:1.5em;font-weight:800;letter-spacing:3px;background:#0f0;color:#000;border:none;border-radius:12px;cursor:pointer;box-shadow:0 0 25px #0f0;transition:all .15s}
   #startBtn:active{transform:scale(.96)}
   #startBtn:disabled{opacity:.4;cursor:wait;box-shadow:none}
   #hint{margin-top:20px;color:#666;font-size:.9em}
-
   #logview{display:none;position:fixed;inset:0;z-index:2;flex-direction:column;background:#0a0c0f}
   body.log #logview,body.fail:not(.done) #logview{display:flex}
-  #brand{padding:12px;text-align:center;background:#0e1116;border-bottom:1px solid #1e2732;
-    color:#0f0;font-weight:800;letter-spacing:4px}
-  #ramBox{padding:6px 12px;font:11px/1.4 monospace;color:#7fd0a0;background:#0b0d10;
-    border-bottom:1px solid #1e2732;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #brand{padding:12px;text-align:center;background:#0e1116;border-bottom:1px solid #1e2732;color:#0f0;font-weight:800;letter-spacing:4px}
+  #ramBox{padding:6px 12px;font:11px/1.4 monospace;color:#7fd0a0;background:#0b0d10;border-bottom:1px solid #1e2732;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #state,#out{display:none}
   #state{padding:10px 15px;font-size:20px;font-weight:700;color:#d8c07f}
-  #out{flex:1;min-height:0;overflow-y:auto;padding:10px 15px;
-    font:12px/1.4 monospace;white-space:pre-wrap;color:#c8ced8;background:#0a0c0f}
+  #out{flex:1;min-height:0;overflow-y:auto;padding:10px 15px;font:12px/1.4 monospace;white-space:pre-wrap;color:#c8ced8;background:#0a0c0f}
   body.log #state,body.log #out,body.fail:not(.done) #state,body.fail:not(.done) #out{display:block}
-
-  #msg{display:none;position:fixed;inset:0;z-index:10;align-items:center;
-    justify-content:center;text-align:center;padding:30px;font-size:1.8em;
-    font-weight:700;letter-spacing:1px;white-space:pre-wrap;line-height:1.4}
-  body.done #msg{display:flex;color:#7fd0a0;
-    background:radial-gradient(ellipse at center,rgba(0,20,10,.95),rgba(0,0,0,.98))}
-  body.fail:not(.done) #msg{display:flex;color:#d08a7f;
-    background:radial-gradient(ellipse at center,rgba(30,10,10,.95),rgba(0,0,0,.98))}
-  body.done .notice{display:none}
+  #msg{display:none;position:fixed;inset:0;z-index:10;align-items:center;justify-content:center;text-align:center;padding:30px;font-size:1.8em;font-weight:700;letter-spacing:1px;white-space:pre-wrap;line-height:1.4}
+  body.done #msg{display:flex;color:#7fd0a0;background:radial-gradient(ellipse at center,rgba(0,20,10,.95),rgba(0,0,0,.98))}
+  body.fail:not(.done) #msg{display:flex;color:#d08a7f;background:radial-gradient(ellipse at center,rgba(30,10,10,.95),rgba(0,0,0,.98))}
 </style>
 </head>
 <body>
-
 <canvas id="matrix"></canvas>
-
 <div id="landing">
   <h1>afterglow</h1>
   <p class="sub">PS4 KERNEL EXPLOIT · FW 14.00 / 14.02</p>
   <button id="startBtn" disabled>CARREGANDO...</button>
   <p id="hint"></p>
 </div>
-
 <div id="logview">
   <div id="brand">AFTERGLOW</div>
   <div id="ramBox">RAM: ...</div>
@@ -79,110 +45,6 @@
   <div id="out"></div>
 </div>
 <div id="msg"></div>
-
-<script type="module">
-/* ========== fundo matrix (50 ms, leve) ========== */
-(() => {
-  const c = document.getElementById("matrix"), x = c.getContext("2d");
-  const L = "0123456789ABCDEF", S = 14;
-  let drops = [];
-  const resize = () => {
-    c.width = innerWidth; c.height = innerHeight;
-    drops = new Array(Math.ceil(c.width / S)).fill(1);
-  };
-  resize(); addEventListener("resize", resize);
-  setInterval(() => {
-    x.fillStyle = "rgba(0,0,0,.08)";
-    x.fillRect(0, 0, c.width, c.height);
-    x.fillStyle = "#0F0"; x.font = S + "px monospace";
-    for (let i = 0; i < drops.length; i++) {
-      x.fillText(L[(Math.random() * L.length) | 0], i * S, drops[i] * S);
-      if (drops[i] * S > c.height && Math.random() > .975) drops[i] = 0;
-      drops[i]++;
-    }
-  }, 50);
-})();
-
-/* ========== observa o desfecho do jb-g.js e persiste flags ========== */
-new MutationObserver(() => {
-  if (document.body.classList.contains("done"))
-    sessionStorage.setItem("ag_done", "1");
-}).observe(document.body, { attributes: true, attributeFilter: ["class"] });
-
-new MutationObserver(() => {
-  const m = document.getElementById("msg");
-  if (!m) return;
-  const map = {
-    "DONE":                            "✅ CONCLUÍDO\n\nReinicie o console para repetir.",
-    "Restart your console":            "⚠️ REINICIE O CONSOLE",
-    "Refresh the page and run again":  "🔄 RECARREGUE A PÁGINA E TENTE DE NOVO"
-  };
-  const t = m.textContent.trim();
-  if (map[t]) m.textContent = map[t];
-}).observe(document.getElementById("msg"), {
-  childList: true, characterData: true, subtree: true
-});
-
-/* ========== roteamento ========== */
-const params   = new URLSearchParams(location.search);
-const isPS4    = /PlayStation 4/.test(navigator.userAgent);
-const startBtn = document.getElementById("startBtn");
-const hint     = document.getElementById("hint");
-
-/* Perfil de heap LEVE: 16 drains de 16 KB em vez de 512×64 KB.
-   mode=kpstep carrega o kpayload passo a passo (o modo do go.html original). */
-const RUN_URL =
-  "?afterglow=run&log=1&mode=kpstep&g=drain:16&g=drainsz:0x4000&v=1402s";
-
-function landing(label, hintText, onClick) {
-  startBtn.textContent = label;
-  startBtn.disabled    = !onClick;
-  startBtn.onclick     = onClick || null;
-  hint.textContent     = hintText;
-}
-
-if (!isPS4) {
-  landing("🚫 PS4 APENAS", "Abra esta página no navegador do PlayStation 4.", null);
-
-} else if (params.get("afterglow") === "done") {
-  /* O SceShellUI reiniciou o WebProcess e o browser restaurou esta URL.
-     Marca como concluído, volta pra landing — NÃO re-executa. */
-  sessionStorage.setItem("ag_done", "1");
-  try { history.replaceState(null, "", location.pathname); } catch (e) {}
-  landing("✅ CONCLUÍDO", "Reinicie o console para uma nova execução.", null);
-
-} else if (params.get("afterglow")) {
-  /* Modo execução — jb-g.js cuida do resto. */
-  document.body.className = "log";
-  import("./jb-g.js?v=1402s").catch(e => {
-    document.body.className = "fail";
-    document.getElementById("msg").textContent = "❌ " + (e?.message || e);
-  });
-
-} else if (sessionStorage.getItem("ag_done") === "1") {
-  landing("✅ JÁ RODOU NESTA SESSÃO", "Reinicie o console para repetir.", () => {
-    sessionStorage.removeItem("ag_done");
-    sessionStorage.removeItem("ag_started");
-    location.href = RUN_URL;
-  });
-
-} else if (sessionStorage.getItem("ag_started") === "1") {
-  landing("▶ TENTAR DE NOVO", "A tentativa anterior pode ter travado.", () => {
-    location.href = RUN_URL;
-  });
-
-} else {
-  /* Primeira execução — autostart 3 s; tocar no botão pula o countdown. */
-  sessionStorage.setItem("ag_started", "1");
-  let n = 3;
-  const launch = () => { location.href = RUN_URL; };
-  landing("▶ INICIAR (" + n + ")", "Toque para começar agora.", launch);
-  const iv = setInterval(() => {
-    n--;
-    if (n <= 0) { clearInterval(iv); launch(); return; }
-    startBtn.textContent = "▶ INICIAR (" + n + ")";
-  }, 1000);
-}
-</script>
+<script type="module" src="script.js?v=1402s"></script>
 </body>
 </html>
